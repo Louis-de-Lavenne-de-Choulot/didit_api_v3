@@ -664,6 +664,7 @@ func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 	}
 	r.Body = io.NopCloser(bytes.NewReader(raw))
 
+	// ── timestamp freshness ──────────────────────────────────────────
 	tsStr := r.Header.Get("X-Timestamp")
 	if tsStr == "" {
 		return nil, errors.New("didit: missing X-Timestamp header")
@@ -677,30 +678,54 @@ func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 		return nil, fmt.Errorf("didit: webhook timestamp too old (diff %ds)", diff)
 	}
 
-	sig := r.Header.Get("X-Signature-V2")
-	if sig == "" {
-		sig = r.Header.Get("X-Signature")
-	}
-	if sig == "" {
+	// ── signature ────────────────────────────────────────────────────
+	sigV2 := r.Header.Get("X-Signature-V2")
+	sigLegacy := r.Header.Get("X-Signature")
+
+	if sigV2 != "" {
+		// V2: HMAC-SHA256 over canonical JSON
+		canonical, err := canonicalJSON(raw)
+		if err != nil {
+			return nil, fmt.Errorf("didit: canonicalise webhook body: %w", err)
+		}
+		mac := hmac.New(sha256.New, []byte(c.cfg.WebhookSecret))
+		mac.Write(canonical)
+		expected := hex.EncodeToString(mac.Sum(nil))
+		if !hmac.Equal([]byte(sigV2), []byte(expected)) {
+			return nil, errors.New("didit: webhook signature mismatch (V2)")
+		}
+	} else if sigLegacy != "" {
+		// Legacy: HMAC over ASCII-escaped canonical JSON.
+		// For most payloads json.Marshal on a map already produces
+		// the required ASCII-escaped form.
+		canonical, err := canonicalJSON(raw)
+		if err != nil {
+			return nil, fmt.Errorf("didit: canonicalise webhook body: %w", err)
+		}
+		mac := hmac.New(sha256.New, []byte(c.cfg.WebhookSecret))
+		mac.Write(canonical)
+		expected := hex.EncodeToString(mac.Sum(nil))
+		if !hmac.Equal([]byte(sigLegacy), []byte(expected)) {
+			return nil, errors.New("didit: webhook signature mismatch (legacy)")
+		}
+	} else {
 		return nil, errors.New("didit: missing signature header")
 	}
 
-	mac := hmac.New(sha256.New, []byte(c.cfg.WebhookSecret))
-
-	if r.Header.Get("X-Signature-V2") != "" {
-		mac.Write([]byte(tsStr + ".")) // V2: timestamp.body
-	}
-	mac.Write(raw)
-	expected := hex.EncodeToString(mac.Sum(nil))
-	if !hmac.Equal([]byte(sig), []byte(expected)) {
-		return nil, errors.New("didit: webhook signature mismatch")
-	}
-
+	// ── decode event ─────────────────────────────────────────────────
 	var evt WebhookEvent
 	if err := json.Unmarshal(raw, &evt); err != nil {
 		return nil, fmt.Errorf("didit: decode webhook: %w", err)
 	}
 	return &evt, nil
+}
+
+func canonicalJSON(raw []byte) ([]byte, error) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	return json.Marshal(m) // sorted keys, no whitespace
 }
 
 // ── PDF reports ────────────────────────────────────────────────────────────
