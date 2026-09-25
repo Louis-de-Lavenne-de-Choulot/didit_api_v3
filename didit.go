@@ -686,6 +686,10 @@ func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 	}
 
 	mac := hmac.New(sha256.New, []byte(c.cfg.WebhookSecret))
+
+	if r.Header.Get("X-Signature-V2") != "" {
+		mac.Write([]byte(tsStr + ".")) // V2: timestamp.body
+	}
 	mac.Write(raw)
 	expected := hex.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(sig), []byte(expected)) {
