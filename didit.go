@@ -27,6 +27,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -657,6 +658,18 @@ type WebhookEvent struct {
 // VerifyWebhook reads the raw body and headers, verifies the HMAC-SHA256
 // signature, checks the timestamp freshness, and returns the parsed event.
 // Call this BEFORE json.Unmarshal-ing the body yourself.
+//
+// Two signature schemes are supported:
+//
+//   - X-Signature-V2 (recommended): HMAC-SHA256 over the sorted,
+//     Unicode-preserved canonical JSON. Go's json.Encoder HTML-escapes
+//     &, < and > by default, which breaks the signature whenever the
+//     payload contains those characters — we disable that here.
+//
+//   - X-Signature (legacy): HMAC-SHA256 over the exact raw bytes as Didit
+//     transmitted them. Never re-serialise for this path; any re-encoding
+//     (different Unicode escaping, float repr, key order) changes the bytes
+//     even when the data is identical.
 func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
@@ -664,7 +677,7 @@ func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 	}
 	r.Body = io.NopCloser(bytes.NewReader(raw))
 
-	// ── timestamp freshness ──────────────────────────────────────────
+	// ── timestamp freshness ──────────────────────────────────────
 	tsStr := r.Header.Get("X-Timestamp")
 	if tsStr == "" {
 		return nil, errors.New("didit: missing X-Timestamp header")
@@ -678,12 +691,12 @@ func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 		return nil, fmt.Errorf("didit: webhook timestamp too old (diff %ds)", diff)
 	}
 
-	// ── signature ────────────────────────────────────────────────────
+	// ── signature ────────────────────────────────────────────────
 	sigV2 := r.Header.Get("X-Signature-V2")
 	sigLegacy := r.Header.Get("X-Signature")
 
-	if sigV2 != "" {
-		// V2: HMAC-SHA256 over canonical JSON
+	switch {
+	case sigV2 != "":
 		canonical, err := canonicalJSON(raw)
 		if err != nil {
 			return nil, fmt.Errorf("didit: canonicalise webhook body: %w", err)
@@ -694,25 +707,18 @@ func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 		if !hmac.Equal([]byte(sigV2), []byte(expected)) {
 			return nil, errors.New("didit: webhook signature mismatch (V2)")
 		}
-	} else if sigLegacy != "" {
-		// Legacy: HMAC over ASCII-escaped canonical JSON.
-		// For most payloads json.Marshal on a map already produces
-		// the required ASCII-escaped form.
-		canonical, err := canonicalJSON(raw)
-		if err != nil {
-			return nil, fmt.Errorf("didit: canonicalise webhook body: %w", err)
-		}
+	case sigLegacy != "":
 		mac := hmac.New(sha256.New, []byte(c.cfg.WebhookSecret))
-		mac.Write(canonical)
+		mac.Write(raw)
 		expected := hex.EncodeToString(mac.Sum(nil))
 		if !hmac.Equal([]byte(sigLegacy), []byte(expected)) {
 			return nil, errors.New("didit: webhook signature mismatch (legacy)")
 		}
-	} else {
+	default:
 		return nil, errors.New("didit: missing signature header")
 	}
 
-	// ── decode event ─────────────────────────────────────────────────
+	// ── decode event ─────────────────────────────────────────────
 	var evt WebhookEvent
 	if err := json.Unmarshal(raw, &evt); err != nil {
 		return nil, fmt.Errorf("didit: decode webhook: %w", err)
@@ -720,12 +726,60 @@ func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 	return &evt, nil
 }
 
+// canonicalJSON reproduces the byte sequence Didit signs with X-Signature-V2:
+//
+//	parse → sortKeys (recursive) → JSON.stringify (Unicode preserved)
+//
+// The critical Go-specific detail is SetEscapeHTML(false). Without it,
+// json.Encoder emits \u0026, \u003c and \u003e for &, < and >, which
+// diverges from Python's json.dumps(ensure_ascii=False) that Didit uses.
+//
+// Whole-valued floats need no special handling in Go: json.Unmarshal into
+// interface{} produces float64(95), and json.Marshal renders it back as 95
+// rather than 95.0 — matching Didit's "shortenFloats" behaviour.
 func canonicalJSON(raw []byte) ([]byte, error) {
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	var parsed any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, err
 	}
-	return json.Marshal(m) // sorted keys, no whitespace
+
+	sorted := sortKeysRecursive(parsed)
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(sorted); err != nil {
+		return nil, err
+	}
+	// json.Encoder.Encode appends a trailing newline; strip it so the
+	// canonical bytes match exactly what Didit serialises.
+	out := bytes.TrimRight(buf.Bytes(), "\n")
+	return out, nil
+}
+
+// sortKeysRecursive returns a copy of v with every object's keys in
+// lexicographic order, recursively. Arrays keep their original order.
+func sortKeysRecursive(v any) any {
+	switch t := v.(type) {
+	case []any:
+		for i, item := range t {
+			t[i] = sortKeysRecursive(item)
+		}
+		return t
+	case map[string]any:
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		out := make(map[string]any, len(t))
+		for _, k := range keys {
+			out[k] = sortKeysRecursive(t[k])
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 // ── PDF reports ────────────────────────────────────────────────────────────
