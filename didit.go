@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+
 	"fmt"
 	"io"
 	"net/http"
@@ -389,7 +390,7 @@ type Decision struct {
 	Status      string `json:"status"`
 	VendorData  string `json:"vendor_data"`
 	WorkflowID  string `json:"workflow_id"`
-	CreatedAt   int64  `json:"created_at"`
+	CreatedAt   string `json:"created_at"`
 
 	IDVerifications  []IDVerification  `json:"id_verifications"`
 	NFCVerifications []NFCVerification `json:"nfc_verifications"`
@@ -662,16 +663,12 @@ type WebhookEvent struct {
 // Two signature schemes are supported:
 //
 //   - X-Signature-V2 (recommended): HMAC-SHA256 over the sorted,
-//     Unicode-preserved canonical JSON. Go's json.Encoder HTML-escapes
-//     &, < and > by default, which breaks the signature whenever the
-//     payload contains those characters — we disable that here.
+//     Unicode-preserved canonical JSON.
 //
 //   - X-Signature (legacy): HMAC-SHA256 over the exact raw bytes as Didit
-//     transmitted them. Never re-serialise for this path; any re-encoding
-//     (different Unicode escaping, float repr, key order) changes the bytes
-//     even when the data is identical.
+//     transmitted them.
 func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
-	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 16<<20))
 	if err != nil {
 		return nil, fmt.Errorf("didit: read webhook body: %w", err)
 	}
@@ -701,19 +698,24 @@ func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("didit: canonicalise webhook body: %w", err)
 		}
+
 		mac := hmac.New(sha256.New, []byte(c.cfg.WebhookSecret))
 		mac.Write(canonical)
 		expected := hex.EncodeToString(mac.Sum(nil))
+
 		if !hmac.Equal([]byte(sigV2), []byte(expected)) {
 			return nil, errors.New("didit: webhook signature mismatch (V2)")
 		}
+
 	case sigLegacy != "":
 		mac := hmac.New(sha256.New, []byte(c.cfg.WebhookSecret))
 		mac.Write(raw)
 		expected := hex.EncodeToString(mac.Sum(nil))
+
 		if !hmac.Equal([]byte(sigLegacy), []byte(expected)) {
 			return nil, errors.New("didit: webhook signature mismatch (legacy)")
 		}
+
 	default:
 		return nil, errors.New("didit: missing signature header")
 	}
