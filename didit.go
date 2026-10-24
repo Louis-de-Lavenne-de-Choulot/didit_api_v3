@@ -3,12 +3,12 @@
 //
 // It covers the full lifecycle:
 //
-//	Sessions  — create, retrieve, list, update status, delete, generate PDF,
+//	Sessions  - create, retrieve, list, update status, delete, generate PDF,
 //	            share a session (reusable KYC) with a partner application.
-//	Workflows — list, get, create, update, delete.
-//	Users     — list, get, create, update, change status, batch delete,
+//	Workflows - list, get, create, update, delete.
+//	Users     - list, get, create, update, change status, batch delete,
 //	            generate a user-history PDF.
-//	Lists     — list, get, create, rename, delete; add, list, and remove
+//	Lists     - list, get, create, rename, delete; add, list, and remove
 //	            entries (blocklists, allowlists, custom lists).
 //
 // All HTTP plumbing, HMAC verification, and JSON decoding are private.
@@ -738,7 +738,7 @@ func (c *Client) VerifyWebhook(r *http.Request) (*WebhookEvent, error) {
 //
 // Whole-valued floats need no special handling in Go: json.Unmarshal into
 // interface{} produces float64(95), and json.Marshal renders it back as 95
-// rather than 95.0 — matching Didit's "shortenFloats" behaviour.
+// rather than 95.0 - matching Didit's "shortenFloats" behaviour.
 func canonicalJSON(raw []byte) ([]byte, error) {
 	var parsed any
 	if err := json.Unmarshal(raw, &parsed); err != nil {
@@ -1049,7 +1049,7 @@ type CreateUserRequest struct {
 	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
-// CreateUser creates a user entity. Not idempotent — retrying with the same
+// CreateUser creates a user entity. Not idempotent - retrying with the same
 // vendor_data returns a conflict.
 func (c *Client) CreateUser(ctx context.Context, req CreateUserRequest) (*User, error) {
 	if req.VendorData == "" {

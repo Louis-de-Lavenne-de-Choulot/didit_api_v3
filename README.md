@@ -10,9 +10,9 @@ This package is a single file. It uses only the Go standard library. There is no
 
 You need three things from the Didit Console:
 
-1. **An API key** — Settings → API & Webhooks.
-2. **A workflow UUID** — Workflows → your KYC workflow. This is the "recipe" Didit follows: which documents to accept, whether to do liveness, whether to run AML, etc. You design it once in the Console; the client just references it.
-3. **A webhook secret** — Settings → Webhooks. Every result notification is HMAC-signed with this secret.
+1. **An API key** - Settings → API & Webhooks.
+2. **A workflow UUID** - Workflows → your KYC workflow. This is the "recipe" Didit follows: which documents to accept, whether to do liveness, whether to run AML, etc. You design it once in the Console; the client just references it.
+3. **A webhook secret** - Settings → Webhooks. Every result notification is HMAC-signed with this secret.
 
 Set them as environment variables:
 
@@ -43,7 +43,7 @@ The rest of this document is organized around **what you are trying to do**.
 
 ---
 
-## Use case 1 — Send someone a verification link
+## Use case 1 - Send someone a verification link
 
 **The situation.** You want a specific person to prove their identity. They are not sitting next to you; they might be in another country. You will email them a link, they open it on their phone, scan their ID, take a selfie, and Didit tells you what happened.
 
@@ -64,11 +64,11 @@ fmt.Println(resp.URL)
 // → https://verify.didit.me/session/xyz...   (or your custom domain)
 ```
 
-**What just happened.** Didit created a *session* — one attempt by one person to prove their identity. The session has an ID, a status (initially `"Not Started"` or `"In Progress"`), and a URL. Until someone opens that URL, the session just sits there.
+**What just happened.** Didit created a *session* - one attempt by one person to prove their identity. The session has an ID, a status (initially `"Not Started"` or `"In Progress"`), and a URL. Until someone opens that URL, the session just sits there.
 
 **The `VendorData` field is important.** This is your own identifier for the person. It travels with the session and comes back to you in every webhook. Use your database's user ID, an email, or a case number. You will need it to match the result to the right human.
 
-**The `Callback` field is where the browser goes after.** When the user finishes the verification flow in their browser, Didit redirects them to this URL. It is a *redirect*, not a notification — do not confuse it with the webhook. Send them to a "thank you, we'll be in touch" page.
+**The `Callback` field is where the browser goes after.** When the user finishes the verification flow in their browser, Didit redirects them to this URL. It is a *redirect*, not a notification - do not confuse it with the webhook. Send them to a "thank you, we'll be in touch" page.
 
 **Shortcut for the common case:**
 
@@ -80,7 +80,7 @@ Same thing, but only the URL comes back.
 
 ---
 
-## Use case 2 — Find out when someone passes
+## Use case 2 - Find out when someone passes
 
 **The situation.** The user has opened the link, scanned their documents, and is done. You need to know: did they pass?
 
@@ -88,7 +88,7 @@ There are two ways to learn this. Use both.
 
 ### The webhook (preferred)
 
-Register a URL in the Didit Console under Webhooks. Every time a session changes state — approved, declined, sent to review — Didit POSTs to that URL. Your handler looks like this:
+Register a URL in the Didit Console under Webhooks. Every time a session changes state - approved, declined, sent to review - Didit POSTs to that URL. Your handler looks like this:
 
 ```go
 func HandleDiditWebhook(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +119,7 @@ func HandleDiditWebhook(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-**Why `VerifyWebhook` and not just `json.Unmarshal`?** Because a webhook is an untrusted HTTP request. Anyone on the internet can POST to your endpoint and claim that "client-42" passed. The only way to know a webhook is genuine is the HMAC signature, and `VerifyWebhook` is the function that checks it. It reads the raw body first (before you parse it), computes the HMAC, and compares. If you `json.Unmarshal` yourself first, you have already lost — the parsing changed the bytes, and the signature can never match.
+**Why `VerifyWebhook` and not just `json.Unmarshal`?** Because a webhook is an untrusted HTTP request. Anyone on the internet can POST to your endpoint and claim that "client-42" passed. The only way to know a webhook is genuine is the HMAC signature, and `VerifyWebhook` is the function that checks it. It reads the raw body first (before you parse it), computes the HMAC, and compares. If you `json.Unmarshal` yourself first, you have already lost - the parsing changed the bytes, and the signature can never match.
 
 **Idempotency.** Didit may retry a webhook. Use `event.EventID` as a deduplication key in your own database so you do not grant access twice.
 
@@ -141,7 +141,7 @@ This is also useful as a belt-and-braces check: when a webhook arrives claiming 
 
 ---
 
-## Use case 3 — Check that it is really the right person
+## Use case 3 - Check that it is really the right person
 
 **The situation.** You entered John Doe's expected details into your system. You sent the link to `john@example.com`. Someone completed the verification. But did *John Doe* complete it, or someone who guessed the email address?
 
@@ -218,7 +218,7 @@ Case, whitespace, hyphens, and apostrophes are noise from OCR. Strip them all be
 
 The name check catches the case where a *different, real* person completed the flow using their own valid ID. If you skip the name check, someone with a valid document can complete a session that was meant for someone else.
 
-**If you want to be stricter**, the decision payload carries more than just the name. `PrimaryIDVerification()` returns the whole `IDVerification` struct — date of birth, issuing country, document number, expiry date. You can compare any or all of them:
+**If you want to be stricter**, the decision payload carries more than just the name. `PrimaryIDVerification()` returns the whole `IDVerification` struct - date of birth, issuing country, document number, expiry date. You can compare any or all of them:
 
 ```go
 id := event.Decision.PrimaryIDVerification()
@@ -237,14 +237,14 @@ if id.DocumentLiveness["printed_copy"].Bucket != "approve" {
 
 ---
 
-## Use case 4 — Approve or decline a session manually
+## Use case 4 - Approve or decline a session manually
 
 **The situation.** A session came back `"In Review"` because the document quality was marginal or the face match was borderline. You looked at it yourself, and you want to make a call.
 
 ```go
 resp, err := client.UpdateSessionStatus(ctx, sessionID, didit_api_v3.UpdateStatusRequest{
     NewStatus: "Approved",
-    Comment:   "Manual review by ops@yourapp.com — document was legible on closer inspection.",
+    Comment:   "Manual review by ops@yourapp.com - document was legible on closer inspection.",
 })
 ```
 
@@ -257,7 +257,7 @@ _, err := client.UpdateSessionStatus(ctx, sessionID, didit_api_v3.UpdateStatusRe
 })
 ```
 
-**Asking the user to try again.** If a single feature failed — say, the document photo was too blurry but everything else passed — you can re-open just that step instead of making the user start over:
+**Asking the user to try again.** If a single feature failed - say, the document photo was too blurry but everything else passed - you can re-open just that step instead of making the user start over:
 
 ```go
 _, err := client.UpdateSessionStatus(ctx, sessionID, didit_api_v3.UpdateStatusRequest{
@@ -277,7 +277,7 @@ Didit emails the user a link to redo just the document scan. Everything else the
 
 ---
 
-## Use case 5 — Download a compliance PDF
+## Use case 5 - Download a compliance PDF
 
 **The situation.** Your regulator, your lawyer, or your file archive wants a printable proof of the verification.
 
@@ -296,11 +296,11 @@ pdf, err := client.GenerateUserHistoryPDF(ctx, "client-42")
 os.WriteFile("client-42-history.pdf", pdf, 0o600)
 ```
 
-The user-history PDF includes every reportable session keyed by the same `VendorData` — useful for KYC audits where you need to show the full relationship, not just one moment in time.
+The user-history PDF includes every reportable session keyed by the same `VendorData` - useful for KYC audits where you need to show the full relationship, not just one moment in time.
 
 ---
 
-## Use case 6 — Manage the humans you verify
+## Use case 6 - Manage the humans you verify
 
 **The situation.** You have verified the same person several times over the years. You want to see their history, block them if something goes wrong, or flag them for closer attention in the future.
 
@@ -313,7 +313,7 @@ page, err := client.ListUsers(ctx, didit_api_v3.ListUsersParams{
     PageSize: 50,
 })
 for _, u := range page.Results {
-    fmt.Printf("%s: %s — %d sessions, %d approved\n",
+    fmt.Printf("%s: %s - %d sessions, %d approved\n",
         u.VendorData, u.FullName, u.SessionCount, u.ApprovedCount)
 }
 ```
@@ -337,7 +337,7 @@ _, err := client.UpdateUserStatus(ctx, "client-42", "FLAGGED")
 _, err := client.UpdateUserStatus(ctx, "client-42", "BLOCKED")
 ```
 
-**Delete a user.** Prefer `BLOCKED` for everyday use — deletion is irreversible and cascades.
+**Delete a user.** Prefer `BLOCKED` for everyday use - deletion is irreversible and cascades.
 
 ```go
 _, err := client.BatchDeleteUsers(ctx, didit_api_v3.BatchDeleteUsersRequest{
@@ -352,14 +352,14 @@ _, err := client.BatchDeleteUsers(ctx, didit_api_v3.BatchDeleteUsersRequest{
 
 ---
 
-## Use case 7 — Block or allow known entities
+## Use case 7 - Block or allow known entities
 
 **The situation.** You have noticed a specific face, document number, or email showing up in fraudulent sessions. You want Didit to automatically flag any future session that matches.
 
 Didit organizes these rules into *lists*. There are two types you manage yourself:
 
-- **Allowlists** — only entities on this list can pass. Everyone else is flagged.
-- **Custom lists** — informational; you check them in your own logic.
+- **Allowlists** - only entities on this list can pass. Everyone else is flagged.
+- **Custom lists** - informational; you check them in your own logic.
 
 There are also **system blocklists**, which Didit pre-populates. You can add to them, but the entries they already contain are managed by Didit.
 
@@ -378,7 +378,7 @@ for _, l := range lists.Results {
 entry, err := client.AddEntry(ctx, blocklistUUID, didit_api_v3.AddEntryRequest{
     Value:        "biometric-template-uuid-here",
     DisplayLabel: "Fraudulent actor from case #42",
-    Comment:      "Confirmed printout attack — 2024-11-15",
+    Comment:      "Confirmed printout attack - 2024-11-15",
 })
 ```
 
@@ -410,9 +410,9 @@ list, err := client.CreateList(ctx, didit_api_v3.CreateListRequest{
 
 ---
 
-## Use case 8 — Share a verified session with a partner
+## Use case 8 - Share a verified session with a partner
 
-**The situation.** You verified Alice. Now a partner service — say a bank — also needs to trust Alice, but you do not want to make her verify again.
+**The situation.** You verified Alice. Now a partner service - say a bank - also needs to trust Alice, but you do not want to make her verify again.
 
 Didit lets you mint a short-lived token that the partner redeems on their own Didit application. They get a copy of the verification result; Alice gets to keep her sanity.
 
@@ -435,7 +435,7 @@ The token is a signed JWT bound to a specific partner application and a specific
 
 ---
 
-## Use case 9 — Clean up data (GDPR)
+## Use case 9 - Clean up data (GDPR)
 
 **The situation.** A user has asked you to delete everything, or your retention policy says session data older than X must be erased.
 
@@ -475,7 +475,7 @@ client.DeleteSession(ctx, sessionID, nil)
 
 ---
 
-## Use case 10 — Browse past sessions
+## Use case 10 - Browse past sessions
 
 **The situation.** You want a list of every session you have run, filtered by status or date, for reporting or customer support.
 
@@ -489,17 +489,17 @@ page, err := client.ListSessions(ctx, didit_api_v3.ListSessionsParams{
 })
 
 for _, s := range page.Results {
-    fmt.Printf("%s — %s — %s\n", s.SessionID, s.VendorData, s.Status)
+    fmt.Printf("%s - %s - %s\n", s.SessionID, s.VendorData, s.Status)
 }
 
 // Follow page.Next to get the next page.
 ```
 
-**Pagination.** The response carries `Next` and `Previous` URLs. Pass them straight back to Didit if you want — they are complete, signed URLs.
+**Pagination.** The response carries `Next` and `Previous` URLs. Pass them straight back to Didit if you want - they are complete, signed URLs.
 
 ---
 
-## Use case 11 — Manage workflows programmatically
+## Use case 11 - Manage workflows programmatically
 
 **The situation.** You deploy to many environments and want to script workflow creation instead of clicking through the Console. Or you need to A/B test different workflows.
 
@@ -515,7 +515,7 @@ wf, err := client.GetWorkflow(ctx, workflowUUID)
 
 // Create a minimal KYC workflow.
 newWF, err := client.CreateWorkflow(ctx, didit_api_v3.CreateWorkflowRequest{
-    WorkflowLabel: "EU KYC — strict",
+    WorkflowLabel: "EU KYC - strict",
     WorkflowType:  "kyc",
     Features: []didit_api_v3.WorkflowFeature{
         {Feature: "OCR", Config: map[string]any{
@@ -534,7 +534,7 @@ newWF, err := client.CreateWorkflow(ctx, didit_api_v3.CreateWorkflowRequest{
 
 // Patch it later.
 _, err = client.UpdateWorkflow(ctx, newWF.UUID, didit_api_v3.CreateWorkflowRequest{
-    WorkflowLabel: "EU KYC — strict v2",
+    WorkflowLabel: "EU KYC - strict v2",
 })
 
 // Delete when done.
@@ -571,14 +571,14 @@ if err != nil {
 }
 ```
 
-`apiErr.Body` contains Didit's raw response — usually a JSON object with a `detail` field explaining what went wrong. Surface it in your logs; it is written for developers.
+`apiErr.Body` contains Didit's raw response - usually a JSON object with a `detail` field explaining what went wrong. Surface it in your logs; it is written for developers.
 
-**Webhook verification errors are different.** They are always plain `error` values — the point is that *something* is wrong and you should reject the request. Common causes:
+**Webhook verification errors are different.** They are always plain `error` values - the point is that *something* is wrong and you should reject the request. Common causes:
 
-- `missing X-Timestamp header` — Didit is not the caller.
-- `webhook timestamp too old` — a replay attack, or your clock is wrong.
-- `webhook signature mismatch` — the webhook secret is wrong, or the body was tampered with.
-- `decode webhook` — the payload shape is not what the library expects, likely a Didit API version bump.
+- `missing X-Timestamp header` - Didit is not the caller.
+- `webhook timestamp too old` - a replay attack, or your clock is wrong.
+- `webhook signature mismatch` - the webhook secret is wrong, or the body was tampered with.
+- `decode webhook` - the payload shape is not what the library expects, likely a Didit API version bump.
 
 Log the error, return 401, and move on.
 
@@ -615,7 +615,7 @@ didit_api_v3.Init(didit_api_v3.Config{
 
 ## Complete example: the secret-sharing flow
 
-Putting it all together — this is the flow that started this project.
+Putting it all together - this is the flow that started this project.
 
 **Step 1.** When the user opens the sharing request, create a Didit session with the name you expect them to present.
 
@@ -674,7 +674,7 @@ func HandleDiditWebhook(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-**Step 3.** The user receives a second email — the one-time link. They click it, and the secret is revealed once, then gone forever. They were only able to receive it because they proved their identity in step 2.
+**Step 3.** The user receives a second email - the one-time link. They click it, and the secret is revealed once, then gone forever. They were only able to receive it because they proved their identity in step 2.
 
 The attacker who has compromised the user's mailbox sees both emails, but cannot pass the identity check. The one-time link is useless on its own because the secret is only generated *after* the identity check passes.
 
@@ -695,4 +695,4 @@ If something feels missing, it is probably yours to build.
 
 ## Where to look in the code
 
-Every public function has a doc comment. Start there — `go doc github.com/Louis-de-Lavenne-de-Choulot/didit_api_v3` will list them all. The struct fields on `Decision` and its nested types mirror the Didit V3 API exactly, so if the Console shows a field, it is in there under a camel-cased Go name.
+Every public function has a doc comment. Start there - `go doc github.com/Louis-de-Lavenne-de-Choulot/didit_api_v3` will list them all. The struct fields on `Decision` and its nested types mirror the Didit V3 API exactly, so if the Console shows a field, it is in there under a camel-cased Go name.
